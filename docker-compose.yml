@@ -1,0 +1,18 @@
+services:
+  postgres:
+    image: postgres:16.4
+    environment:
+      POSTGRES_USER: message-api
+      POSTGRES_PASSWORD: message-api
+      POSTGRES_DB: message-api
+    ports:
+      - 5432:5432
+    volumes:
+      # copy the sql script to create tables
+      - ./postgres/schema.sql:/docker-entrypoint-initdb.d/create_schema.sql
+    restart: always
+
+  redis:
+    image: redis
+    ports:
+      - 6379:6379
