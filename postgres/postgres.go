@@ -44,7 +44,7 @@ func (pg *Postgres) ListMessages(ctx context.Context, limit int, offset int, exc
 		Group("message.id", "r.type")
 
 	if len(excludeMsgIDs) > 0 {
-		q = q.Where("m.id NOT IN (?)", bun.In(excludeMsgIDs))
+		q = q.Where("message.id NOT IN (?)", bun.In(excludeMsgIDs))
 	}
 
 	var messagesWithReactions []messageWithReactions
