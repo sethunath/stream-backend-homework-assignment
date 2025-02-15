@@ -53,7 +53,10 @@ func (r *Redis) ListMessages(ctx context.Context) ([]api.Message, error) {
 			return nil, fmt.Errorf("hgetall: %w", err)
 		}
 
-		out[i] = msg.APIMessage()
+		out[i], err = msg.APIMessage()
+		if err != nil {
+			return nil, fmt.Errorf("hgetall: %w", err)
+		}
 	}
 
 	return out, nil

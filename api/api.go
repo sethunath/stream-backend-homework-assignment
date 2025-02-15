@@ -117,7 +117,7 @@ func (a *API) listMessages(w http.ResponseWriter, r *http.Request) {
 	}
 	var dbMsgs []Message
 	if cacheMsgCount < pageSize {
-		dbMsgs, err = a.DB.ListMessages(r.Context(), pageSize, offset+cacheMsgCount, msgIDs...)
+		dbMsgs, err = a.DB.ListMessages(r.Context(), pageSize-cacheMsgCount, offset, msgIDs...)
 		if err != nil {
 			a.respondError(w, http.StatusInternalServerError, err, "Could not list messages")
 			return
