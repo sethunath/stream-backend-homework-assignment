@@ -7,13 +7,17 @@ import (
 	"github.com/uptrace/bun/driver/pgdriver"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 )
 
+const pageSize = 10
+const cacheSize = 10
+
 // A DB provides a storage layer that persists messages.
 type DB interface {
-	ListMessages(ctx context.Context, excludeMsgIDs ...string) ([]Message, error)
+	ListMessages(ctx context.Context, limit int, offset int, excludeMsgIDs ...string) ([]Message, error)
 	InsertMessage(ctx context.Context, msg Message) (Message, error)
 	InsertReaction(ctx context.Context, reaction Reaction) (Reaction, error)
 }
@@ -66,35 +70,53 @@ func (a *API) respondError(w http.ResponseWriter, status int, err error, msg str
 	a.respond(w, status, response{Error: msg})
 }
 
+type messageReactionCounts struct {
+	Type  string `json:"type"`
+	Count int    `json:"count"`
+}
+type message struct {
+	ID                    string                  `json:"id"`
+	Text                  string                  `json:"text"`
+	UserID                string                  `json:"user_id"`
+	CreatedAt             string                  `json:"created_at"`
+	MessageReactionCounts []messageReactionCounts `json:"message_reactions"`
+}
+
 func (a *API) listMessages(w http.ResponseWriter, r *http.Request) {
-	type message struct {
-		ID        string `json:"id"`
-		Text      string `json:"text"`
-		UserID    string `json:"user_id"`
-		CreatedAt string `json:"created_at"`
-	}
 	type response struct {
 		Messages []message `json:"messages"`
 	}
 
-	// Get messages from cache
-	msgs, err := a.Cache.ListMessages(r.Context())
-	if err != nil {
-		a.respondError(w, http.StatusInternalServerError, err, "Could not list messages")
-		return
+	p := r.URL.Query().Get("page")
+	page, err := strconv.Atoi(p)
+	if err != nil || page < 1 {
+		page = 1
 	}
+	offset := (page - 1) * pageSize
 
-	a.Logger.Info("Got messages from cache", "count", len(msgs))
+	var msgs []Message
+	if offset < cacheSize {
+		// Get messages from cache
+		msgs, err = a.Cache.ListMessages(r.Context())
+		if err != nil {
+			a.Logger.Error("Error listing messages from cache, trying database", "error", err.Error())
+		}
+	}
+	cacheMsgCount := len(msgs)
+	a.Logger.Info("Got messages from cache", "count", cacheMsgCount)
 
 	// Get any remaining messages from DB
-	msgIDs := make([]string, len(msgs))
+	msgIDs := make([]string, cacheMsgCount)
 	for i, msg := range msgs {
 		msgIDs[i] = msg.ID
 	}
-	dbMsgs, err := a.DB.ListMessages(r.Context(), msgIDs...)
-	if err != nil {
-		a.respondError(w, http.StatusInternalServerError, err, "Could not list messages")
-		return
+	var dbMsgs []Message
+	if cacheMsgCount < pageSize {
+		dbMsgs, err = a.DB.ListMessages(r.Context(), pageSize, offset+cacheMsgCount, msgIDs...)
+		if err != nil {
+			a.respondError(w, http.StatusInternalServerError, err, "Could not list messages")
+			return
+		}
 	}
 	a.Logger.Info("Got remaining messages from DB", "count", len(dbMsgs))
 	msgs = append(msgs, dbMsgs...)
@@ -102,10 +124,17 @@ func (a *API) listMessages(w http.ResponseWriter, r *http.Request) {
 	out := make([]message, len(msgs))
 	for i, msg := range msgs {
 		out[i] = message{
-			ID:        msg.ID,
-			Text:      msg.Text,
-			UserID:    msg.UserID,
-			CreatedAt: msg.CreatedAt.Format(time.RFC1123),
+			ID:                    msg.ID,
+			Text:                  msg.Text,
+			UserID:                msg.UserID,
+			CreatedAt:             msg.CreatedAt.Format(time.RFC1123),
+			MessageReactionCounts: make([]messageReactionCounts, 0),
+		}
+		for _, reaction := range msg.MessageReactionCounts {
+			out[i].MessageReactionCounts = append(out[i].MessageReactionCounts, messageReactionCounts{
+				Type:  reaction.Type,
+				Count: reaction.Count,
+			})
 		}
 	}
 	res := response{

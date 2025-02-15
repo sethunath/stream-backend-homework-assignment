@@ -93,7 +93,7 @@ func TestPostgres_ListMessages(t *testing.T) {
 				}
 			}
 
-			got, err := pg.ListMessages(ctx)
+			got, err := pg.ListMessages(ctx, 0, 0)
 			if err != nil {
 				t.Fatal(err)
 			}

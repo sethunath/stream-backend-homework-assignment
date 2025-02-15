@@ -60,7 +60,7 @@ func (r *Redis) ListMessages(ctx context.Context) ([]api.Message, error) {
 
 // InsertMessage adds the message to Redis with the message:MESSAGE_ID as the key and adds the key to a sorted set.
 func (r *Redis) InsertMessage(ctx context.Context, msg api.Message) error {
-	m := message(msg)
+	m := r.toRedisMessage(msg)
 
 	err := r.cli.Watch(ctx, func(tx *redis.Tx) error {
 		_, err := tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
@@ -86,6 +86,67 @@ func (r *Redis) InsertMessage(ctx context.Context, msg api.Message) error {
 		return fmt.Errorf("evict oldest: %w", err)
 	}
 	return nil
+}
+
+// GetMessage retrieves a message from Redis by its ID.
+func (r *Redis) GetMessage(ctx context.Context, messageID string) (*api.Message, error) {
+	key := fmt.Sprintf("%s:%s", messagePrefix, messageID)
+
+	var m message
+
+	err := r.cli.HGetAll(ctx, key).Scan(&m)
+	if err != nil {
+		return nil, fmt.Errorf("redis get message: %w", err)
+	}
+
+	if m.ID == "" {
+		return nil, fmt.Errorf("message not found: %s", messageID)
+	}
+
+	apiMsg := m.ToAPIMessage()
+
+	return apiMsg, nil
+}
+
+// DeleteMessage removes a message from Redis by its ID.
+func (r *Redis) DeleteMessage(ctx context.Context, messageID string) error {
+	key := fmt.Sprintf("%s:%s", messagePrefix, messageID)
+
+	err := r.cli.Watch(ctx, func(tx *redis.Tx) error {
+		_, err := tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+			pipe.Del(ctx, key)
+			pipe.ZRem(ctx, messagePrefix, key) // Remove from sorted set
+
+			return nil
+		})
+		return err
+	}, messageID)
+
+	if err != nil {
+		return fmt.Errorf("redis delete message: %w", err)
+	}
+
+	return nil
+}
+
+// ToAPIMessage convert redis message to api message
+func (m message) ToAPIMessage() *api.Message {
+	am := &api.Message{}
+
+	am.ID = m.ID
+	am.Text = m.Text
+	am.UserID = m.UserID
+	am.CreatedAt = m.CreatedAt
+	return am
+}
+
+func (r *Redis) toRedisMessage(apiMsg api.Message) message {
+	return message{
+		ID:        apiMsg.ID,
+		Text:      apiMsg.Text,
+		UserID:    apiMsg.UserID,
+		CreatedAt: apiMsg.CreatedAt,
+	}
 }
 
 func (r *Redis) evictOldest(ctx context.Context) error {

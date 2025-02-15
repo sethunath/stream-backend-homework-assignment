@@ -30,23 +30,29 @@ func Connect(ctx context.Context, connStr string) (*Postgres, error) {
 }
 
 // ListMessages returns all messages in the database.
-func (pg *Postgres) ListMessages(ctx context.Context, excludeMsgIDs ...string) ([]api.Message, error) {
+func (pg *Postgres) ListMessages(ctx context.Context, limit int, offset int, excludeMsgIDs ...string) ([]api.Message, error) {
 	var msgs []message
 	q := pg.bun.NewSelect().
 		Model(&msgs).
-		Order("created_at DESC")
+		Offset(offset).
+		Limit(limit).
+		Order("message.created_at DESC").
+		Column("message.*")
+
+	q = q.Join("LEFT JOIN message_reactions AS r ON r.message_id = message.id").
+		ColumnExpr("r.type AS reaction_type, COUNT(r.id) AS reaction_count").
+		Group("message.id", "r.type")
 
 	if len(excludeMsgIDs) > 0 {
-		q = q.Where("id NOT IN (?)", bun.In(excludeMsgIDs))
+		q = q.Where("m.id NOT IN (?)", bun.In(excludeMsgIDs))
 	}
-	if err := q.Scan(ctx); err != nil {
+
+	var messagesWithReactions []messageWithReactions
+	if err := q.Scan(ctx, &messagesWithReactions); err != nil {
 		return nil, fmt.Errorf("scan: %w", err)
 	}
-	out := make([]api.Message, len(msgs))
-	for i, m := range msgs {
-		out[i] = m.APIMessage()
-	}
-	return out, nil
+
+	return convertToMessages(messagesWithReactions), nil
 }
 
 // InsertMessage inserts a message into the database. The returned message
@@ -79,4 +85,35 @@ func (pg *Postgres) InsertReaction(ctx context.Context, reaction api.Reaction) (
 
 	// Return the inserted reaction, assuming there's a method to convert to API format
 	return r.APIMessageReaction(), nil
+}
+
+func convertToMessages(messagesWithReactions []messageWithReactions) []api.Message {
+	messageMap := make(map[string]*api.Message)
+
+	for _, mwr := range messagesWithReactions {
+		if _, exists := messageMap[mwr.ID]; !exists {
+			messageMap[mwr.ID] = &api.Message{
+				ID:                    mwr.ID,
+				Text:                  mwr.MessageText,
+				UserID:                mwr.UserID,
+				CreatedAt:             mwr.CreatedAt,
+				MessageReactionCounts: make([]api.MessageReactionCounts, 0),
+			}
+		}
+
+		if mwr.ReactionType != nil && mwr.ReactionCount != nil {
+			reaction := api.MessageReactionCounts{
+				Type:  *mwr.ReactionType,
+				Count: *mwr.ReactionCount,
+			}
+			messageMap[mwr.ID].MessageReactionCounts = append(messageMap[mwr.ID].MessageReactionCounts, reaction)
+		}
+	}
+
+	messages := make([]api.Message, 0, len(messageMap))
+	for _, msg := range messageMap {
+		messages = append(messages, *msg)
+	}
+
+	return messages
 }

@@ -4,10 +4,17 @@ import "time"
 
 // A Message represents a persisted message.
 type Message struct {
-	ID        string
-	Text      string
-	UserID    string
-	CreatedAt time.Time
+	ID                    string
+	Text                  string
+	UserID                string
+	CreatedAt             time.Time
+	MessageReactionCounts []MessageReactionCounts
+}
+
+// MessageReactionCounts represents the reaction and count read from DB
+type MessageReactionCounts struct {
+	Type  string
+	Count int
 }
 
 // A Reaction represents a reaction to a message such as a like.

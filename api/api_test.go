@@ -427,7 +427,7 @@ type testdb struct {
 	insertReaction func(t *testing.T, reaction Reaction) (Reaction, error)
 }
 
-func (db *testdb) ListMessages(_ context.Context, excludeMsgIDs ...string) ([]Message, error) {
+func (db *testdb) ListMessages(ctx context.Context, limit int, offset int, excludeMsgIDs ...string) ([]Message, error) {
 	return db.listMessages(db.T, excludeMsgIDs...)
 }
 
