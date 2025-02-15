@@ -97,12 +97,12 @@ func convertToMessages(messagesWithReactions []messageWithReactions) []api.Messa
 				Text:                  mwr.MessageText,
 				UserID:                mwr.UserID,
 				CreatedAt:             mwr.CreatedAt,
-				MessageReactionCounts: make([]api.MessageReactionCounts, 0),
+				MessageReactionCounts: make([]api.MessageReactionCount, 0),
 			}
 		}
 
 		if mwr.ReactionType != nil && mwr.ReactionCount != nil {
-			reaction := api.MessageReactionCounts{
+			reaction := api.MessageReactionCount{
 				Type:  *mwr.ReactionType,
 				Count: *mwr.ReactionCount,
 			}

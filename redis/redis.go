@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -60,9 +61,11 @@ func (r *Redis) ListMessages(ctx context.Context) ([]api.Message, error) {
 
 // InsertMessage adds the message to Redis with the message:MESSAGE_ID as the key and adds the key to a sorted set.
 func (r *Redis) InsertMessage(ctx context.Context, msg api.Message) error {
-	m := r.toRedisMessage(msg)
-
-	err := r.cli.Watch(ctx, func(tx *redis.Tx) error {
+	m, err := r.toRedisMessage(msg)
+	if err != nil {
+		return err
+	}
+	err = r.cli.Watch(ctx, func(tx *redis.Tx) error {
 		_, err := tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
 			key := fmt.Sprintf("%s:%s", messagePrefix, m.ID)
 			pipe.HSet(ctx, key, m)
@@ -100,11 +103,13 @@ func (r *Redis) GetMessage(ctx context.Context, messageID string) (*api.Message,
 	}
 
 	if m.ID == "" {
-		return nil, fmt.Errorf("message not found: %s", messageID)
+		return nil, api.ErrMessageNotFoundInCache
 	}
 
-	apiMsg := m.ToAPIMessage()
-
+	apiMsg, err := m.ToAPIMessage()
+	if err != nil {
+		return nil, fmt.Errorf("redis get message: %w", err)
+	}
 	return apiMsg, nil
 }
 
@@ -130,23 +135,37 @@ func (r *Redis) DeleteMessage(ctx context.Context, messageID string) error {
 }
 
 // ToAPIMessage convert redis message to api message
-func (m message) ToAPIMessage() *api.Message {
+func (m message) ToAPIMessage() (*api.Message, error) {
 	am := &api.Message{}
 
 	am.ID = m.ID
 	am.Text = m.Text
 	am.UserID = m.UserID
 	am.CreatedAt = m.CreatedAt
-	return am
+	if m.MessageReactionCounts != "" {
+		err := json.Unmarshal([]byte(m.MessageReactionCounts), &am.MessageReactionCounts)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return am, nil
 }
 
-func (r *Redis) toRedisMessage(apiMsg api.Message) message {
-	return message{
+func (r *Redis) toRedisMessage(apiMsg api.Message) (message, error) {
+	m := message{
 		ID:        apiMsg.ID,
 		Text:      apiMsg.Text,
 		UserID:    apiMsg.UserID,
 		CreatedAt: apiMsg.CreatedAt,
 	}
+	if apiMsg.MessageReactionCounts != nil {
+		reactionCountsJSON, err := json.Marshal(apiMsg.MessageReactionCounts)
+		if err != nil {
+			return message{}, fmt.Errorf("failed to marshal reactions: %w", err)
+		}
+		m.MessageReactionCounts = string(reactionCountsJSON)
+	}
+	return m, nil
 }
 
 func (r *Redis) evictOldest(ctx context.Context) error {

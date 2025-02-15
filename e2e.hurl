@@ -31,18 +31,18 @@ jsonpath "$.messages" count == 2
 jsonpath "$.messages[0].text" == "world!"
 
 # Create a reaction to the latest message with default value #TODO: ReplaceIDs
-POST http://localhost:8080/messages/75decdc2-881e-42d9-876d-d08597365fa7/reactions
-{ "type": "clap", "user_id": "testuser4" }
+POST http://localhost:8080/messages/a5922418-ab74-4a9f-ade0-c03754933265/reactions
+{ "type": "clap", "user_id": "testusse7" }
 HTTP 201
 
 # React to the same message again and its a conflict
-POST http://localhost:8080/messages/75decdc2-881e-42d9-876d-d08597365fa7/reactions
-{ "type": "like", "user_id": "testuser1" }
+POST http://localhost:8080/messages/a5922418-ab74-4a9f-ade0-c03754933265/reactions
+{ "type": "like", "user_id": "xa5ssr9" }
 HTTP 409
 
 # React to the message as testuser2 with score
 POST http://localhost:8080/messages/f349e150-91d7-40b7-86c6-41e7615196a0/reactions
-{ "type": "like", "user_id": "testuser2", "score": 5 }
+{ "type": "clap", "user_id": "testssuser2", "score": 5 }
 HTTP 201
 
 GET http://localhost:8080/messages?page=2

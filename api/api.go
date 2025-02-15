@@ -15,6 +15,8 @@ import (
 const pageSize = 10
 const cacheSize = 10
 
+var ErrMessageNotFoundInCache = fmt.Errorf("message not found in cache")
+
 // A DB provides a storage layer that persists messages.
 type DB interface {
 	ListMessages(ctx context.Context, limit int, offset int, excludeMsgIDs ...string) ([]Message, error)
@@ -26,6 +28,8 @@ type DB interface {
 type Cache interface {
 	ListMessages(ctx context.Context) ([]Message, error)
 	InsertMessage(ctx context.Context, msg Message) error
+	GetMessage(ctx context.Context, messageID string) (*Message, error)
+	DeleteMessage(ctx context.Context, messageID string) error
 }
 
 // API provides the REST endpoints for the application.
@@ -232,6 +236,40 @@ func (a *API) createReaction(w http.ResponseWriter, r *http.Request) {
 		}
 		a.respondError(w, http.StatusInternalServerError, err, "Could not insert reaction")
 		return
+	}
+	//Update the cache
+	m, err := a.Cache.GetMessage(r.Context(), messageID)
+	if err != nil && !errors.Is(err, ErrMessageNotFoundInCache) {
+		a.respondError(w, http.StatusInternalServerError, err, "Could not update the cache")
+		return
+	}
+	if m != nil {
+		//Update the reaction count
+		newReaction := true
+		for idx, rn := range m.MessageReactionCounts {
+			if rn.Type == reaction.Type {
+				newReaction = false
+				m.MessageReactionCounts[idx].Count++
+				break
+			}
+		}
+		if newReaction {
+			m.MessageReactionCounts = append(m.MessageReactionCounts, MessageReactionCount{
+				Type:  reaction.Type,
+				Count: 1,
+			})
+		}
+		//Update the cache
+		err = a.Cache.DeleteMessage(r.Context(), messageID)
+		if err != nil {
+			a.respondError(w, http.StatusInternalServerError, err, "Could not update the cache")
+			return
+		}
+		err = a.Cache.InsertMessage(r.Context(), *m)
+		if err != nil {
+			a.respondError(w, http.StatusInternalServerError, err, "Could not update the cache")
+			return
+		}
 	}
 
 	res := response{

@@ -8,11 +8,11 @@ type Message struct {
 	Text                  string
 	UserID                string
 	CreatedAt             time.Time
-	MessageReactionCounts []MessageReactionCounts
+	MessageReactionCounts []MessageReactionCount
 }
 
-// MessageReactionCounts represents the reaction and count read from DB
-type MessageReactionCounts struct {
+// MessageReactionCount represents the reaction and count read from DB
+type MessageReactionCount struct {
 	Type  string
 	Count int
 }
