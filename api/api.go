@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/uptrace/bun/driver/pgdriver"
 	"log/slog"
 	"net/http"
@@ -237,12 +238,13 @@ func (a *API) createReaction(w http.ResponseWriter, r *http.Request) {
 		a.respondError(w, http.StatusInternalServerError, err, "Could not insert reaction")
 		return
 	}
-	//Update the cache
+
 	m, err := a.Cache.GetMessage(r.Context(), messageID)
 	if err != nil && !errors.Is(err, ErrMessageNotFoundInCache) {
 		a.respondError(w, http.StatusInternalServerError, err, "Could not update the cache")
 		return
 	}
+
 	if m != nil {
 		//Update the reaction count
 		newReaction := true
@@ -265,6 +267,7 @@ func (a *API) createReaction(w http.ResponseWriter, r *http.Request) {
 			a.respondError(w, http.StatusInternalServerError, err, "Could not update the cache")
 			return
 		}
+
 		err = a.Cache.InsertMessage(r.Context(), *m)
 		if err != nil {
 			a.respondError(w, http.StatusInternalServerError, err, "Could not update the cache")
