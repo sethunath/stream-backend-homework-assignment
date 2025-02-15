@@ -30,8 +30,18 @@ jsonpath "$.messages" count == 2
 # The messages are sorted by the time they were created in descending order
 jsonpath "$.messages[0].text" == "world!"
 
-# Create a reaction to the latest message
-POST http://localhost:8080/messages/{{message_id}}/reactions
-{ "type": "like", "user_id": "testuser" }
+# Create a reaction to the latest message with default value #TODO: ReplaceIDs
+POST http://localhost:8080/messages/a2209380-a4de-426c-8e04-dca480faac43/reactions
+{ "type": "like", "user_id": "testuser1" }
+HTTP 201
+
+# React to the same message again and its a conflict
+POST http://localhost:8080/messages/a2209380-a4de-426c-8e04-dca480faac43/reactions
+{ "type": "like", "user_id": "testuser1" }
+HTTP 409
+
+# React to the message as testuser2 with score
+POST http://localhost:8080/messages/a2209380-a4de-426c-8e04-dca480faac43/reactions
+{ "type": "like", "user_id": "testuser2", "score": 5 }
 HTTP 201
 

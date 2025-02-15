@@ -62,6 +62,21 @@ func (pg *Postgres) InsertMessage(ctx context.Context, msg api.Message) (api.Mes
 	return m.APIMessage(), nil
 }
 
+// InsertReaction inserts a reaction into the database. The returned reaction
+// holds auto-generated fields, such as the reaction id.
 func (pg *Postgres) InsertReaction(ctx context.Context, reaction api.Reaction) (api.Reaction, error) {
-	panic("not implemented")
+	r := &messageReaction{
+		MessageID: reaction.MessageID,
+		UserID:    reaction.UserID,
+		Type:      reaction.Type,
+		Score:     reaction.Score,
+	}
+
+	// Insert the reaction into the database
+	if _, err := pg.bun.NewInsert().Model(r).Exec(ctx); err != nil {
+		return api.Reaction{}, fmt.Errorf("insert: %w", err)
+	}
+
+	// Return the inserted reaction, assuming there's a method to convert to API format
+	return r.APIMessageReaction(), nil
 }

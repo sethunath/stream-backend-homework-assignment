@@ -3,7 +3,8 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
+	"github.com/uptrace/bun/driver/pgdriver"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -14,6 +15,7 @@ import (
 type DB interface {
 	ListMessages(ctx context.Context, excludeMsgIDs ...string) ([]Message, error)
 	InsertMessage(ctx context.Context, msg Message) (Message, error)
+	InsertReaction(ctx context.Context, reaction Reaction) (Reaction, error)
 }
 
 // A Cache provides a storage layer that caches messages.
@@ -183,6 +185,33 @@ func (a *API) createReaction(w http.ResponseWriter, r *http.Request) {
 	}
 	r.Body.Close()
 
-	err = fmt.Errorf("could not create reaction for message with id %s", messageID)
-	a.respondError(w, http.StatusNotImplemented, err, err.Error())
+	reaction, err := a.DB.InsertReaction(r.Context(), Reaction{
+		MessageID: messageID,
+		UserID:    body.UserID,
+		Type:      body.Type,
+		Score:     body.Score,
+		CreatedAt: time.Now(),
+	})
+	if err != nil {
+		var pgErr pgdriver.Error
+		if ok := errors.As(err, &pgErr); ok {
+			if pgErr.IntegrityViolation() {
+				a.Logger.Error("Duplicate reaction", "error", pgErr.Error())
+				a.respondError(w, http.StatusConflict, err, "Already reacted to this message")
+				return
+			}
+		}
+		a.respondError(w, http.StatusInternalServerError, err, "Could not insert reaction")
+		return
+	}
+
+	res := response{
+		ID:        reaction.ID,
+		MessageID: reaction.MessageID,
+		Type:      reaction.Type,
+		Score:     reaction.Score,
+		UserID:    reaction.UserID,
+		CreatedAt: reaction.CreatedAt.Format(time.RFC1123),
+	}
+	a.respond(w, http.StatusCreated, res)
 }

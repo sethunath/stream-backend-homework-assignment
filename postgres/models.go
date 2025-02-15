@@ -22,3 +22,23 @@ func (m message) APIMessage() api.Message {
 		CreatedAt: m.CreatedAt,
 	}
 }
+
+type messageReaction struct {
+	ID        string    `bun:",pk,type:uuid,default:uuid_generate_v4()"`
+	MessageID string    `bun:"message_id,notnull"`
+	UserID    string    `bun:"user_id,notnull"`
+	Type      string    `bun:"type,notnull"`
+	Score     int       `bun:"score,default:1"`
+	CreatedAt time.Time `bun:",nullzero,default:now()"`
+}
+
+func (m messageReaction) APIMessageReaction() api.Reaction {
+	return api.Reaction{
+		ID:        m.ID,
+		UserID:    m.UserID,
+		MessageID: m.MessageID,
+		Type:      m.Type,
+		Score:     m.Score,
+		CreatedAt: m.CreatedAt,
+	}
+}
