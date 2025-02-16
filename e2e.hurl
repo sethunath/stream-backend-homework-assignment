@@ -40,6 +40,11 @@ POST http://localhost:8080/messages/{{message_id}}/reactions
 { "type": "clap", "user_id": "testuser" }
 HTTP 409
 
+#Invalid reaction type gives validation error
+POST http://localhost:8080/messages/{{message_id}}/reactions
+{ "type": "dislike", "user_id": "testuser" }
+HTTP 400
+
 # Add a new message
 POST http://localhost:8080/messages
 { "text": "another message!", "user_id": "anotheruser" }

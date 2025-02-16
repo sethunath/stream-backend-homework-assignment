@@ -222,7 +222,7 @@ func (a *API) createMessage(w http.ResponseWriter, r *http.Request) {
 func (a *API) createReaction(w http.ResponseWriter, r *http.Request) {
 	type (
 		request struct {
-			Type   string `json:"type" validate:"required"`
+			Type   string `json:"type" validate:"required,oneof=like love laugh sad clap wow"`
 			Score  int    `json:"score"`
 			UserID string `json:"user_id" validate:"required"`
 		}
