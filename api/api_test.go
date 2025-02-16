@@ -53,9 +53,9 @@ func TestAPI_listMessages(t *testing.T) {
 					return nil, nil
 				},
 			},
-			wantStatus: 500,
+			wantStatus: 200,
 			wantBody: `{
-				"error": "Could not list messages"
+				"messages": []
 			}`,
 		},
 		{
@@ -102,7 +102,8 @@ func TestAPI_listMessages(t *testing.T) {
 						"id": "1",
 						"text": "Hello",
 						"user_id": "testuser",
-						"created_at": "Mon, 01 Jan 2024 00:00:00 UTC"
+						"created_at": "Mon, 01 Jan 2024 00:00:00 UTC",
+						"message_reactions": []
 					}
 				]
 			}`,
@@ -134,7 +135,8 @@ func TestAPI_listMessages(t *testing.T) {
 						"id": "1",
 						"text": "Hello",
 						"user_id": "testuser",
-						"created_at": "Mon, 01 Jan 2024 00:00:00 UTC"
+						"created_at": "Mon, 01 Jan 2024 00:00:00 UTC",
+						"message_reactions": []
 					}
 				]
 			}`,
@@ -172,13 +174,15 @@ func TestAPI_listMessages(t *testing.T) {
 						"id": "1",
 						"text": "Hello",
 						"user_id": "testuser",
-						"created_at": "Mon, 01 Jan 2024 00:00:00 UTC"
+						"created_at": "Mon, 01 Jan 2024 00:00:00 UTC",
+						"message_reactions": []
 					},
 					{
 						"id": "2",
 						"text": "World",
 						"user_id": "testuser",
-						"created_at": "Tue, 02 Jan 2024 00:00:00 UTC"
+						"created_at": "Tue, 02 Jan 2024 00:00:00 UTC",
+ 						"message_reactions": []
 					}
 				]
 			}`,
@@ -354,6 +358,7 @@ func TestAPI_createReaction(t *testing.T) {
 	tests := []struct {
 		name       string
 		db         *testdb
+		cache      *testcache
 		messageID  string
 		req        string
 		wantStatus int
@@ -362,7 +367,7 @@ func TestAPI_createReaction(t *testing.T) {
 		{
 			name: "OK",
 			req: `{
-				"type": "thumbs_up",
+				"type": "like",
 				"user_id": "test"
 			}`,
 			messageID: "12345",
@@ -371,7 +376,7 @@ func TestAPI_createReaction(t *testing.T) {
 					if reaction.UserID != "test" {
 						t.Errorf("Got UserID %q, want test", reaction.UserID)
 					}
-					if reaction.Type != "thumbsup" {
+					if reaction.Type != "like" {
 						t.Errorf("Got Text %q, want test", reaction.Type)
 					}
 					return Reaction{
@@ -384,11 +389,20 @@ func TestAPI_createReaction(t *testing.T) {
 					}, nil
 				},
 			},
+			cache: &testcache{
+				deleteMessage: func(t *testing.T, id string) error {
+					return nil
+				},
+				getMessage: func(t *testing.T, id string) (*Message, error) {
+					return nil, nil
+				},
+			},
 			wantStatus: 201,
 			wantBody: `{
 				"id": "1",
 				"message_id": "12345",
-				"type": "thumbs_up",
+				"type": "like",
+				"score": 1,
 				"user_id": "test",
 				"created_at": "Mon, 01 Jan 2024 00:00:00 UTC"
 			}`,
@@ -400,9 +414,14 @@ func TestAPI_createReaction(t *testing.T) {
 			if tt.db == nil {
 				tt.db = &testdb{}
 			}
+			if tt.cache == nil {
+				tt.cache = &testcache{}
+			}
 			tt.db.T = t
+			tt.cache.T = t
 			api := &API{
 				DB:     tt.db,
+				Cache:  tt.cache,
 				Logger: slogt.New(t),
 			}
 
@@ -443,6 +462,16 @@ type testcache struct {
 	T             *testing.T
 	listMessages  func(t *testing.T) ([]Message, error)
 	insertMessage func(t *testing.T, msg Message) error
+	getMessage    func(t *testing.T, id string) (*Message, error)
+	deleteMessage func(t *testing.T, id string) error
+}
+
+func (c *testcache) GetMessage(_ context.Context, messageID string) (*Message, error) {
+	return c.getMessage(c.T, messageID)
+}
+
+func (c *testcache) DeleteMessage(_ context.Context, messageID string) error {
+	return c.deleteMessage(c.T, messageID)
 }
 
 func (c *testcache) ListMessages(_ context.Context) ([]Message, error) {

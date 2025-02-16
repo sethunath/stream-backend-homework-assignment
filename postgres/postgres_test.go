@@ -37,10 +37,11 @@ func TestPostgres_ListMessages(t *testing.T) {
 			},
 			want: []api.Message{
 				{
-					ID:        "388d74ea-cc39-4566-860f-0df6068f3330",
-					Text:      "hello",
-					UserID:    "test",
-					CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+					ID:                    "388d74ea-cc39-4566-860f-0df6068f3330",
+					Text:                  "hello",
+					UserID:                "test",
+					CreatedAt:             time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+					MessageReactionCounts: make([]api.MessageReactionCount, 0),
 				},
 			},
 		},
@@ -66,16 +67,18 @@ func TestPostgres_ListMessages(t *testing.T) {
 			},
 			want: []api.Message{
 				{ // First because of DESC sorting on the created_at column.
-					ID:        "7c6d956b-58d6-4ac3-9984-f341346edc37",
-					Text:      "world",
-					UserID:    "test",
-					CreatedAt: time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
+					ID:                    "7c6d956b-58d6-4ac3-9984-f341346edc37",
+					Text:                  "world",
+					UserID:                "test",
+					CreatedAt:             time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
+					MessageReactionCounts: []api.MessageReactionCount{},
 				},
 				{
-					ID:        "4562fe69-42b3-46e5-b990-11581182f57c",
-					Text:      "hello",
-					UserID:    "test",
-					CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+					ID:                    "4562fe69-42b3-46e5-b990-11581182f57c",
+					Text:                  "hello",
+					UserID:                "test",
+					CreatedAt:             time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+					MessageReactionCounts: []api.MessageReactionCount{},
 				},
 			},
 		},
@@ -165,7 +168,7 @@ func connect(t *testing.T) *Postgres {
 	}
 
 	// Truncate the table before each test.
-	if _, err := pg.bun.NewTruncateTable().Model((*message)(nil)).Exec(ctx); err != nil {
+	if _, err := pg.bun.NewTruncateTable().Model((*message)(nil)).Cascade().Exec(ctx); err != nil {
 		t.Fatalf("Could not truncate table: %v", err)
 	}
 
