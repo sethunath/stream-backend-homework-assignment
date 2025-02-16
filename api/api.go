@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/go-playground/validator/v10"
 	"github.com/uptrace/bun/driver/pgdriver"
 	"log/slog"
 	"net/http"
@@ -35,12 +36,12 @@ type Cache interface {
 
 // API provides the REST endpoints for the application.
 type API struct {
-	Logger *slog.Logger
-	DB     DB
-	Cache  Cache
-
-	once sync.Once
-	mux  *http.ServeMux
+	Logger   *slog.Logger
+	DB       DB
+	Cache    Cache
+	Validate *validator.Validate
+	once     sync.Once
+	mux      *http.ServeMux
 }
 
 func (a *API) setupRoutes() {
@@ -151,8 +152,8 @@ func (a *API) listMessages(w http.ResponseWriter, r *http.Request) {
 func (a *API) createMessage(w http.ResponseWriter, r *http.Request) {
 	type (
 		request struct {
-			Text   string `json:"text"`
-			UserID string `json:"user_id"`
+			Text   string `json:"text" validate:"required"`
+			UserID string `json:"user_id" validate:"required"`
 		}
 		response struct {
 			ID        string `json:"id"`
@@ -169,6 +170,14 @@ func (a *API) createMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r.Body.Close()
+
+	// Validate the request body
+	if err := a.Validate.Struct(body); err != nil {
+		var validationErrors validator.ValidationErrors
+		errors.As(err, &validationErrors)
+		a.respondError(w, http.StatusBadRequest, validationErrors, "Validation failed")
+		return
+	}
 
 	msg, err := a.DB.InsertMessage(r.Context(), Message{
 		Text:      body.Text,
@@ -196,9 +205,9 @@ func (a *API) createMessage(w http.ResponseWriter, r *http.Request) {
 func (a *API) createReaction(w http.ResponseWriter, r *http.Request) {
 	type (
 		request struct {
-			Type   string `json:"type"`
-			Score  int    `json:"score"`
-			UserID string `json:"user_id"`
+			Type   string `json:"type" validate:"required"`
+			Score  int    `json:"score" validate:"required,min=1,max=100"`
+			UserID string `json:"user_id" validate:"required"`
 		}
 		response struct {
 			ID        string `json:"id"`         // reaction ID
@@ -218,7 +227,13 @@ func (a *API) createReaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r.Body.Close()
-
+	// Validate the request body
+	if err := a.Validate.Struct(body); err != nil {
+		var validationErrors validator.ValidationErrors
+		errors.As(err, &validationErrors)
+		a.respondError(w, http.StatusBadRequest, validationErrors, "Validation failed")
+		return
+	}
 	reaction, err := a.DB.InsertReaction(r.Context(), Reaction{
 		MessageID: messageID,
 		UserID:    body.UserID,

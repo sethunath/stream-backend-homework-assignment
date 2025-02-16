@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"github.com/go-playground/validator/v10"
 	"log/slog"
 	"net"
 	"net/http"
@@ -50,9 +51,10 @@ func main() {
 	}
 
 	api := &api.API{
-		Logger: logger,
-		DB:     pg,
-		Cache:  redis,
+		Logger:   logger,
+		DB:       pg,
+		Cache:    redis,
+		Validate: validator.New(),
 	}
 
 	srv := &http.Server{
