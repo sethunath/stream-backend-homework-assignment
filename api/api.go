@@ -75,10 +75,21 @@ func (a *API) respond(w http.ResponseWriter, status int, body any) {
 
 func (a *API) respondError(w http.ResponseWriter, status int, err error, msg string) {
 	type response struct {
-		Error string `json:"error"`
+		Error  string            `json:"error"`
+		Fields map[string]string `json:"fields,omitempty"`
 	}
-	a.Logger.Error("Error", "error", err.Error())
-	a.respond(w, status, response{Error: msg})
+	resp := response{Error: msg}
+	var validationErrors validator.ValidationErrors
+	if errors.As(err, &validationErrors) {
+		status = http.StatusBadRequest
+		resp.Fields = make(map[string]string)
+		for _, fieldError := range validationErrors {
+			resp.Fields[fieldError.Field()] = fieldError.Tag()
+		}
+		resp.Error = "Validation Error"
+	}
+	a.Logger.Warn("Error", "error", err.Error())
+	a.respond(w, status, resp)
 }
 
 // messageReactionCounts represents the reaction count object in the list DTO
@@ -188,10 +199,7 @@ func (a *API) createMessage(w http.ResponseWriter, r *http.Request) {
 
 	// Validate the request body
 	if err := a.Validate.Struct(body); err != nil {
-		a.Logger.Warn("Error validating request body", "error", err.Error())
-		var validationErrors validator.ValidationErrors
-		errors.As(err, &validationErrors)
-		a.respondError(w, http.StatusBadRequest, validationErrors, "Validation failed")
+		a.respondError(w, http.StatusBadRequest, err, "Validation failed")
 		return
 	}
 
@@ -246,10 +254,7 @@ func (a *API) createReaction(w http.ResponseWriter, r *http.Request) {
 	r.Body.Close()
 	// Validate the request body
 	if err := a.Validate.Struct(body); err != nil {
-		a.Logger.Warn("Error validating request body", "error", err.Error())
-		var validationErrors validator.ValidationErrors
-		errors.As(err, &validationErrors)
-		a.respondError(w, http.StatusBadRequest, validationErrors, "Validation failed")
+		a.respondError(w, http.StatusBadRequest, err, "Validation failed")
 		return
 	}
 	reaction, err := a.DB.InsertReaction(r.Context(), Reaction{
@@ -320,4 +325,15 @@ func (a *API) createReaction(w http.ResponseWriter, r *http.Request) {
 		CreatedAt: reaction.CreatedAt.Format(time.RFC1123),
 	}
 	a.respond(w, http.StatusCreated, res)
+}
+
+func (a *API) validateRequest(body interface{}) error {
+	if err := a.Validate.Struct(body); err != nil {
+		var validationErrors validator.ValidationErrors
+		if errors.As(err, &validationErrors) {
+			return validationErrors
+		}
+		return err
+	}
+	return nil
 }
