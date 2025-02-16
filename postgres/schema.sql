@@ -26,5 +26,4 @@ CREATE TABLE IF NOT EXISTS message_reactions (
 
 -- Indexes
 CREATE INDEX idx_message_reactions_message_id ON message_reactions (message_id);
-CREATE INDEX idx_message_reactions_user_id ON message_reactions (user_id);
-CREATE INDEX idx_message_reactions_created_at ON message_reactions (created_at DESC);
+CREATE INDEX idx_message_reactions_message_id_type ON message_reactions (message_id, type);

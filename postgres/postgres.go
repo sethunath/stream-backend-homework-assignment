@@ -87,6 +87,7 @@ func (pg *Postgres) InsertReaction(ctx context.Context, reaction api.Reaction) (
 	return r.APIMessageReaction(), nil
 }
 
+// convertToMessages converts the database response object messageWithReactions to api.Message object
 func convertToMessages(messagesWithReactions []messageWithReactions) []api.Message {
 	messageMap := make(map[string]*api.Message)
 
