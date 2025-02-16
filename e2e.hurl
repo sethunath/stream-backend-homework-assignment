@@ -90,7 +90,6 @@ POST http://localhost:8080/messages/{{new_message_id}}/reactions
 { "type": "clap", "user_id": "cuser4" }
 HTTP 201
 
-# Verify the new message has 4 likes and 4 claps
 # Verify the latest message has 4 likes and 4 claps
 GET http://localhost:8080/messages
 HTTP 200

@@ -23,6 +23,7 @@ func (m message) APIMessage() api.Message {
 	}
 }
 
+// messageWithReactions represents the query response object
 type messageWithReactions struct {
 	ID            string    `bun:",pk,type:uuid"`
 	MessageText   string    `bun:"message_text,notnull"`
@@ -41,6 +42,7 @@ func (m messageWithReactions) APIMessage() api.Message {
 	}
 }
 
+// messageReaction represents the message reaction record saved in db
 type messageReaction struct {
 	ID        string    `bun:",pk,type:uuid,default:uuid_generate_v4()"`
 	MessageID string    `bun:"message_id,notnull"`
