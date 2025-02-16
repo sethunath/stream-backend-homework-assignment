@@ -201,6 +201,9 @@ func TestAPI_listMessages(t *testing.T) {
 				DB:     tt.db,
 				Cache:  tt.cache,
 				Logger: slogt.New(t),
+				Validate: &MockValidator{
+					ShouldFail: false,
+				},
 			}
 
 			srv := httptest.NewServer(api)
@@ -334,8 +337,11 @@ func TestAPI_createMessage(t *testing.T) {
 				tt.cache.T = t
 			}
 			api := &API{
-				DB:     tt.db,
-				Cache:  tt.cache,
+				DB:    tt.db,
+				Cache: tt.cache,
+				Validate: &MockValidator{
+					ShouldFail: false,
+				},
 				Logger: slog.New(slog.NewTextHandler(buf, nil)),
 			}
 
@@ -420,8 +426,11 @@ func TestAPI_createReaction(t *testing.T) {
 			tt.db.T = t
 			tt.cache.T = t
 			api := &API{
-				DB:     tt.db,
-				Cache:  tt.cache,
+				DB:    tt.db,
+				Cache: tt.cache,
+				Validate: &MockValidator{
+					ShouldFail: false,
+				},
 				Logger: slogt.New(t),
 			}
 
@@ -480,6 +489,18 @@ func (c *testcache) ListMessages(_ context.Context) ([]Message, error) {
 
 func (c *testcache) InsertMessage(_ context.Context, msg Message) error {
 	return c.insertMessage(c.T, msg)
+}
+
+type MockValidator struct {
+	ShouldFail bool
+	Err        error
+}
+
+func (m *MockValidator) Struct(interface{}) error {
+	if m.ShouldFail {
+		return m.Err
+	}
+	return nil
 }
 
 func checkStatus(t *testing.T, got, want int) {

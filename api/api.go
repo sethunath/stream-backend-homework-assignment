@@ -34,12 +34,16 @@ type Cache interface {
 	DeleteMessage(ctx context.Context, messageID string) error
 }
 
+type Validator interface {
+	Struct(interface{}) error
+}
+
 // API provides the REST endpoints for the application.
 type API struct {
 	Logger   *slog.Logger
 	DB       DB
 	Cache    Cache
-	Validate *validator.Validate
+	Validate Validator
 	once     sync.Once
 	mux      *http.ServeMux
 }
@@ -206,7 +210,7 @@ func (a *API) createReaction(w http.ResponseWriter, r *http.Request) {
 	type (
 		request struct {
 			Type   string `json:"type" validate:"required"`
-			Score  int    `json:"score" validate:"required,min=1,max=100"`
+			Score  int    `json:"score"`
 			UserID string `json:"user_id" validate:"required"`
 		}
 		response struct {
