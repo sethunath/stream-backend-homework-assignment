@@ -159,7 +159,7 @@ HTTP 200
 [Asserts]
 jsonpath "$.messages[?(@.id == '{{last_message_id}}')].message_reactions[?(@.type == 'like')].count" nth 0 == 3
 
-# Fetch the second page of messages (assuming pagination with 10 items per page)
+# Fetch the second page of messages
 GET http://localhost:8080/messages?page=2
 HTTP 200
 [Asserts]

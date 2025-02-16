@@ -157,6 +157,153 @@ func TestRedis_InsertMessage(t *testing.T) {
 	}
 }
 
+func TestRedis_GetMessage(t *testing.T) {
+	tests := []struct {
+		name        string
+		messageID   string
+		setup       func(t *testing.T, r *Redis)
+		expectedMsg *api.Message
+		expectedErr error
+	}{
+		{
+			name:      "OK - Message found",
+			messageID: "1bb3fbd9-01b8-41ed-ac45-3f7c6235e657",
+			setup: func(t *testing.T, r *Redis) {
+				members := map[string]message{
+					"messages:1bb3fbd9-01b8-41ed-ac45-3f7c6235e657": message{
+						ID:        "1bb3fbd9-01b8-41ed-ac45-3f7c6235e657",
+						Text:      "hello",
+						UserID:    "test",
+						CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+					},
+				}
+				set(t, r, members)
+			},
+			expectedMsg: &api.Message{
+				ID:        "1bb3fbd9-01b8-41ed-ac45-3f7c6235e657",
+				Text:      "hello",
+				UserID:    "test",
+				CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+			},
+			expectedErr: nil,
+		},
+		{
+			name:      "Error - Message not found",
+			messageID: "1bb3fbd9-01b8-41ed-ac45-3f7c6235e657",
+			setup: func(t *testing.T, r *Redis) {
+				// No setup, message does not exist
+			},
+			expectedMsg: nil,
+			expectedErr: api.ErrMessageNotFoundInCache,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+
+			r := connect(t)
+			if tt.setup != nil {
+				tt.setup(t, r)
+			}
+
+			msg, err := r.GetMessage(ctx, tt.messageID)
+			if err != tt.expectedErr {
+				t.Errorf("Expected error: %v, got: %v", tt.expectedErr, err)
+			}
+
+			if tt.expectedMsg != nil {
+				if msg == nil {
+					t.Error("Expected message, got nil")
+				} else {
+					if msg.ID != tt.expectedMsg.ID {
+						t.Errorf("Expected ID: %v, got: %v", tt.expectedMsg.ID, msg.ID)
+					}
+					if msg.Text != tt.expectedMsg.Text {
+						t.Errorf("Expected Text: %v, got: %v", tt.expectedMsg.Text, msg.Text)
+					}
+					if msg.UserID != tt.expectedMsg.UserID {
+						t.Errorf("Expected UserID: %v, got: %v", tt.expectedMsg.UserID, msg.UserID)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestRedis_DeleteMessage(t *testing.T) {
+	tests := []struct {
+		name        string
+		messageID   string
+		setup       func(t *testing.T, r *Redis)
+		expectedErr error
+	}{
+		{
+			name:      "OK - Message deleted",
+			messageID: "1bb3fbd9-01b8-41ed-ac45-3f7c6235e657",
+			setup: func(t *testing.T, r *Redis) {
+				members := map[string]message{
+					"messages:1bb3fbd9-01b8-41ed-ac45-3f7c6235e657": message{
+						ID:        "1bb3fbd9-01b8-41ed-ac45-3f7c6235e657",
+						Text:      "hello",
+						UserID:    "test",
+						CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+					},
+				}
+				set(t, r, members)
+			},
+			expectedErr: nil,
+		},
+		{
+			name:      "Error - Message not found",
+			messageID: "456",
+			setup: func(t *testing.T, r *Redis) {
+				// No setup, message does not exist
+			},
+			expectedErr: nil, // No error expected if message doesn't exist
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+
+			r := connect(t)
+			if tt.setup != nil {
+				tt.setup(t, r)
+			}
+
+			err := r.DeleteMessage(ctx, tt.messageID)
+			if err != tt.expectedErr {
+				t.Errorf("Expected error: %v, got: %v", tt.expectedErr, err)
+			}
+
+			// Verify the message is deleted
+			if tt.expectedErr == nil {
+				key := fmt.Sprintf("%s:%s", messagePrefix, tt.messageID)
+				exists, err := r.cli.Exists(ctx, key).Result()
+				if err != nil {
+					t.Fatalf("Failed to check if message exists: %v", err)
+				}
+				if exists != 0 {
+					t.Error("Message was not deleted")
+				}
+
+				// Verify the message is removed from the sorted set
+				score, err := r.cli.ZScore(ctx, messagePrefix, key).Result()
+				if err != redis.Nil {
+					t.Error("Message was not removed from the sorted set")
+				}
+				if score != 0 {
+					t.Error("Message was not removed from the sorted set")
+				}
+			}
+		})
+	}
+}
+
 func TestRedis_InsertMessage_MaxSize(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

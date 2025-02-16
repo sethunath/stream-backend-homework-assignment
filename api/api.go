@@ -34,6 +34,7 @@ type Cache interface {
 	DeleteMessage(ctx context.Context, messageID string) error
 }
 
+// Validator validates the struct based on the validation tags
 type Validator interface {
 	Struct(interface{}) error
 }
@@ -80,10 +81,13 @@ func (a *API) respondError(w http.ResponseWriter, status int, err error, msg str
 	a.respond(w, status, response{Error: msg})
 }
 
+// messageReactionCounts represents the reaction count object in the list DTO
 type messageReactionCounts struct {
 	Type  string `json:"type"`
 	Count int    `json:"count"`
 }
+
+// message represents the message list DTO
 type message struct {
 	ID                    string                  `json:"id"`
 	Text                  string                  `json:"text"`
@@ -124,6 +128,7 @@ func (a *API) listMessages(w http.ResponseWriter, r *http.Request) {
 	if cacheMsgCount < pageSize {
 		dbMsgs, err = a.DB.ListMessages(r.Context(), pageSize-cacheMsgCount, offset, msgIDs...)
 		if err != nil {
+			a.Logger.Error("Error listing messages from db, trying database", "error", err.Error())
 			a.respondError(w, http.StatusInternalServerError, err, "Could not list messages")
 			return
 		}
@@ -131,6 +136,15 @@ func (a *API) listMessages(w http.ResponseWriter, r *http.Request) {
 	a.Logger.Info("Got remaining messages from DB", "count", len(dbMsgs))
 	msgs = append(msgs, dbMsgs...)
 
+	out := toMessage(msgs)
+	res := response{
+		Messages: out,
+	}
+	a.respond(w, http.StatusOK, res)
+}
+
+// toMessage converts the Message list to message dto list
+func toMessage(msgs []Message) []message {
 	out := make([]message, len(msgs))
 	for i, msg := range msgs {
 		out[i] = message{
@@ -147,10 +161,7 @@ func (a *API) listMessages(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 	}
-	res := response{
-		Messages: out,
-	}
-	a.respond(w, http.StatusOK, res)
+	return out
 }
 
 func (a *API) createMessage(w http.ResponseWriter, r *http.Request) {
@@ -168,8 +179,8 @@ func (a *API) createMessage(w http.ResponseWriter, r *http.Request) {
 	)
 
 	var body request
-	err := json.NewDecoder(r.Body).Decode(&body)
-	if err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		a.Logger.Warn("Error decoding request body", "error", err.Error())
 		a.respondError(w, http.StatusBadRequest, err, "Could not decode request body")
 		return
 	}
@@ -177,6 +188,7 @@ func (a *API) createMessage(w http.ResponseWriter, r *http.Request) {
 
 	// Validate the request body
 	if err := a.Validate.Struct(body); err != nil {
+		a.Logger.Warn("Error validating request body", "error", err.Error())
 		var validationErrors validator.ValidationErrors
 		errors.As(err, &validationErrors)
 		a.respondError(w, http.StatusBadRequest, validationErrors, "Validation failed")
@@ -189,6 +201,7 @@ func (a *API) createMessage(w http.ResponseWriter, r *http.Request) {
 		CreatedAt: time.Now(),
 	})
 	if err != nil {
+		a.Logger.Error("Error creating message in DB", "error", err.Error())
 		a.respondError(w, http.StatusInternalServerError, err, "Could not insert message")
 		return
 	}
@@ -225,14 +238,15 @@ func (a *API) createReaction(w http.ResponseWriter, r *http.Request) {
 
 	messageID := r.PathValue("messageID")
 	var body request
-	err := json.NewDecoder(r.Body).Decode(&body)
-	if err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		a.Logger.Warn("Error decoding request body", "error", err.Error())
 		a.respondError(w, http.StatusBadRequest, err, "Could not decode request body")
 		return
 	}
 	r.Body.Close()
 	// Validate the request body
 	if err := a.Validate.Struct(body); err != nil {
+		a.Logger.Warn("Error validating request body", "error", err.Error())
 		var validationErrors validator.ValidationErrors
 		errors.As(err, &validationErrors)
 		a.respondError(w, http.StatusBadRequest, validationErrors, "Validation failed")
@@ -249,7 +263,7 @@ func (a *API) createReaction(w http.ResponseWriter, r *http.Request) {
 		var pgErr pgdriver.Error
 		if ok := errors.As(err, &pgErr); ok {
 			if pgErr.IntegrityViolation() {
-				a.Logger.Error("Duplicate reaction", "error", pgErr.Error())
+				a.Logger.Warn("Duplicate reaction", "error", pgErr.Error())
 				a.respondError(w, http.StatusConflict, err, "Already reacted to this message")
 				return
 			}
@@ -260,6 +274,7 @@ func (a *API) createReaction(w http.ResponseWriter, r *http.Request) {
 
 	m, err := a.Cache.GetMessage(r.Context(), messageID)
 	if err != nil && !errors.Is(err, ErrMessageNotFoundInCache) {
+		a.Logger.Error("Could not cache message", "error", err.Error())
 		a.respondError(w, http.StatusInternalServerError, err, "Could not update the cache")
 		return
 	}
@@ -283,12 +298,14 @@ func (a *API) createReaction(w http.ResponseWriter, r *http.Request) {
 		//Update the cache
 		err = a.Cache.DeleteMessage(r.Context(), messageID)
 		if err != nil {
+			a.Logger.Error("Could not cache message", "error", err.Error())
 			a.respondError(w, http.StatusInternalServerError, err, "Could not update the cache")
 			return
 		}
 
 		err = a.Cache.InsertMessage(r.Context(), *m)
 		if err != nil {
+			a.Logger.Error("Could not cache message", "error", err.Error())
 			a.respondError(w, http.StatusInternalServerError, err, "Could not update the cache")
 			return
 		}

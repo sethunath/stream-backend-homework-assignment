@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -412,6 +413,116 @@ func TestAPI_createReaction(t *testing.T) {
 				"user_id": "test",
 				"created_at": "Mon, 01 Jan 2024 00:00:00 UTC"
 			}`,
+		},
+		{
+			name: "OKWithCachedMessage",
+			req: `{
+				"type": "like",
+				"user_id": "test"
+			}`,
+			messageID: "12345",
+			db: &testdb{
+				insertReaction: func(t *testing.T, reaction Reaction) (Reaction, error) {
+					if reaction.UserID != "test" {
+						t.Errorf("Got UserID %q, want test", reaction.UserID)
+					}
+					if reaction.Type != "like" {
+						t.Errorf("Got Text %q, want test", reaction.Type)
+					}
+					return Reaction{
+						ID:        "1",
+						MessageID: "12345",
+						Score:     1,
+						Type:      reaction.Type,
+						UserID:    reaction.UserID,
+						CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+					}, nil
+				},
+			},
+			cache: &testcache{
+				deleteMessage: func(t *testing.T, id string) error {
+					return nil
+				},
+				getMessage: func(t *testing.T, id string) (*Message, error) {
+					return &Message{
+						ID:        "12345",
+						Text:      "Hello",
+						UserID:    "test",
+						CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+					}, nil
+				},
+				insertMessage: func(t *testing.T, msg Message) error {
+					return nil
+				},
+			},
+			wantStatus: 201,
+			wantBody: `{
+				"id": "1",
+				"message_id": "12345",
+				"type": "like",
+				"score": 1,
+				"user_id": "test",
+				"created_at": "Mon, 01 Jan 2024 00:00:00 UTC"
+			}`,
+		},
+		{
+			name: "ERRDBFails",
+			req: `{
+				"type": "like",
+				"user_id": "test"
+			}`,
+			messageID: "12345",
+			db: &testdb{
+				insertReaction: func(t *testing.T, reaction Reaction) (Reaction, error) {
+					return Reaction{}, errors.New("db error")
+				},
+			},
+			cache:      &testcache{},
+			wantStatus: 500,
+			wantBody: `{
+            "error": "Could not insert reaction"
+          }`,
+		},
+		{
+			name: "ERRCacheFails",
+			req: `{
+				"type": "like",
+				"user_id": "test"
+			}`,
+			messageID: "12345",
+			db: &testdb{
+				insertReaction: func(t *testing.T, reaction Reaction) (Reaction, error) {
+					if reaction.UserID != "test" {
+						t.Errorf("Got UserID %q, want test", reaction.UserID)
+					}
+					if reaction.Type != "like" {
+						t.Errorf("Got Text %q, want test", reaction.Type)
+					}
+					return Reaction{
+						ID:        "1",
+						MessageID: "12345",
+						Score:     1,
+						Type:      reaction.Type,
+						UserID:    reaction.UserID,
+						CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+					}, nil
+				},
+			},
+			cache: &testcache{
+				deleteMessage: func(t *testing.T, id string) error {
+					return nil
+				},
+				getMessage: func(t *testing.T, id string) (*Message, error) {
+					return &Message{}, fmt.Errorf("cache error")
+				},
+				insertMessage: func(t *testing.T, msg Message) error {
+					return nil
+				},
+			},
+			wantStatus: 500,
+			wantBody: `{
+            "error": "Could not update the cache"
+          }`,
 		},
 	}
 
